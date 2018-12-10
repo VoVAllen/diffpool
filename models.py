@@ -10,8 +10,8 @@ class DiffPool(nn.Module):
         super(DiffPool, self).__init__()
         self.device = device
         self.is_final = is_final
-        self.embed = GraphSAGE(nfeat, nhid, device=self.device)
-        self.assign_mat = GraphSAGE(nfeat, nnext, device=self.device)
+        self.embed = GraphSAGE(nfeat, nhid, device=self.device, use_bn=False)
+        self.assign_mat = GraphSAGE(nfeat, nnext, device=self.device, use_bn=False)
         self.link_pred_loss = 0
 
     def forward(self, x, adj):
@@ -30,9 +30,9 @@ class DiffPool(nn.Module):
 class Classifier(nn.Module):
     def __init__(self):
         super().__init__()
-        self.classifier = nn.Sequential(nn.Linear(64, 32),
+        self.classifier = nn.Sequential(nn.Linear(32, 16),
                                         nn.ReLU(),
-                                        nn.Linear(32, 6))
+                                        nn.Linear(16, 6))
 
     def forward(self, x):
         return self.classifier(x)
@@ -44,10 +44,10 @@ class Model(nn.Module):
         self.device = device
         self.dps = nn.ModuleList([
             GraphSAGE(18, 128, device=self.device),
-            GraphSAGE(128, 128, device=self.device),
-            DiffPool(128, pool_size, 128, device=self.device),
             GraphSAGE(128, 64, device=self.device),
-            DiffPool(64, 1, 64, is_final=True, device=self.device)
+            DiffPool(64, pool_size, 64, device=self.device),
+            GraphSAGE(64, 32, device=self.device),
+            DiffPool(32, 1, 32, is_final=True, device=self.device)
         ])
         self.classifier = Classifier()
 

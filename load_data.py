@@ -6,7 +6,7 @@ import torch
 
 
 def load():
-    graphs = pickle.load(open("./enzymes_s.pkl", 'rb'))
+    graphs = pickle.load(open("./enzymes.pkl", 'rb'))
     features = []
     adj_list = []
     labels = []
@@ -19,7 +19,7 @@ def load():
 
 
 def load_graphs():
-    graphs = pickle.load(open("/data/jinjing/example/graph-pooling/enzymes_s.pkl", 'rb'))
+    graphs = pickle.load(open("/data/jinjing/example/graph-pooling/enzymes.pkl", 'rb'))
     return graphs
 
 

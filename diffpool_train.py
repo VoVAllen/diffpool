@@ -40,7 +40,7 @@ max_num_nodes = max([g.shape[0] for g in adj])
 labels = torch.from_numpy(labels).to(device)
 
 idx = np.arange(600)
-np.random.shuffle(idx)
+np.random.RandomState(seed=124).shuffle(idx)
 idx_train, idx_test = idx[:480], idx[480:]
 
 model = Model(pool_size=int(max_num_nodes * 0.25), device=device).to(device)
@@ -62,8 +62,12 @@ for e in tqdm(range(args.epochs)):
             loss = criterion(output, labels_train)
         loss.backward()
         pred_labels.append(output.argmax())
-        optimizer.step()
-        optimizer.zero_grad()
+        if i % 32 == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+
+    optimizer.step()
+    optimizer.zero_grad()
     pred_labels = torch.stack(pred_labels, dim=0)
     acc = (pred_labels.long() == labels[idx_train].long()).float().mean()
     tqdm.write(f"Epoch:{e}  \t train_acc:{acc:.2f}")
@@ -79,4 +83,3 @@ for e in tqdm(range(args.epochs)):
             val_list.append(output.argmax())
     val_acc = (torch.stack(val_list) == labels[idx_test]).float().mean()
     tqdm.write(f"Epoch:{e}  \t val_acc:{val_acc:.2f}")
-
