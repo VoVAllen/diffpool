@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, random_split
 from batched_model import BatchedModel
 from dataset import TUDataset, CollateFn
 
+
 def main():
     config.writer = SummaryWriter()
 
@@ -39,27 +40,27 @@ def main():
     model.train()
     optimizer = optim.Adam(model.parameters())
 
-
     for e in tqdm(range(args.epochs)):
         config.e = e
         epoch_losses_list = []
-        pred_labels = []
         true_sample = 0
         for i, (adj, features, masks, batch_labels) in enumerate(train_loader):
             graph_feat = model(features, adj, masks)
             output = model.classifier(graph_feat)
             loss = model.loss(output, batch_labels)
-            epoch_losses_list.append(loss.item())
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0)
             optimizer.step()
             optimizer.zero_grad()
+
+            epoch_losses_list.append(loss.item())
             true_sample += (output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
+
         acc = true_sample / 540
         config.writer.add_scalar("Epoch Acc", acc, e)
         tqdm.write(f"Epoch:{e}  \t train_acc:{acc:.2f}")
 
-        val_list = []
         test_loss_list = []
         true_sample = 0
         with torch.no_grad():
@@ -68,11 +69,11 @@ def main():
                 output = model.classifier(graph_feat)
                 loss = model.loss(output, batch_labels)
                 test_loss_list.append(loss.item())
-                # pred_labels.append(output.argmax())
-                # pred_labels = torch.stack(pred_labels, dim=0)
-                true_sample += (output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
+                true_sample += (
+                            output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
         acc = true_sample / 60
         config.writer.add_scalar("Epoch Acc", acc, e)
         tqdm.write(f"Epoch:{e}  \t val_acc:{acc:.2f}")
+
 
 main()

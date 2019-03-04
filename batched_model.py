@@ -35,8 +35,9 @@ class BatchedGraphSAGE(nn.Module):
 
 
 class BatchedDiffPool(nn.Module):
-    def __init__(self, nfeat, nnext, nhid, is_final=False, device='cpu'):
+    def __init__(self, nfeat, nnext, nhid, is_final=False, device='cpu', link_pred=False):
         super(BatchedDiffPool, self).__init__()
+        self.link_pred = link_pred
         self.device = device
         self.is_final = is_final
         self.embed = BatchedGraphSAGE(nfeat, nhid, device=self.device, use_bn=True)
@@ -48,8 +49,8 @@ class BatchedDiffPool(nn.Module):
         s_l = F.softmax(self.assign_mat(x, adj), dim=-1)
         xnext = torch.matmul(s_l.transpose(-1, -2), z_l)
         anext = (s_l.transpose(-1, -2)).matmul(adj).matmul(s_l)
-        # if not self.is_final:
-        #     self.link_pred_loss = (adj - s_l.mm(s_l.t())).norm()
+        if self.link_pred:
+            self.link_pred_loss = (adj - s_l.matmul(s_l.transpose(-1, -2))).norm(dim=1)
         return xnext, anext
 
 
@@ -65,13 +66,14 @@ class Classifier(nn.Module):
 
 
 class BatchedModel(nn.Module):
-    def __init__(self, pool_size, device):
+    def __init__(self, pool_size, device, link_pred=False):
         super().__init__()
+        self.link_pred = link_pred
         self.device = device
         self.layers = nn.ModuleList([
             BatchedGraphSAGE(18, 30, device=self.device),
             BatchedGraphSAGE(30, 30, device=self.device),
-            BatchedDiffPool(30, pool_size, 30, device=self.device),
+            BatchedDiffPool(30, pool_size, 30, device=self.device, link_pred=link_pred),
             BatchedGraphSAGE(30, 30, device=self.device),
             BatchedGraphSAGE(30, 30, device=self.device),
             # BatchedDiffPool(30, 1, 30, is_final=True, device=self.device)
@@ -94,4 +96,10 @@ class BatchedModel(nn.Module):
 
     def loss(self, output, labels):
         criterion = nn.CrossEntropyLoss()
-        return criterion(output, labels)
+        loss = criterion(output, labels)
+        if self.link_pred:
+            for layer in self.layers:
+                if isinstance(layer, BatchedDiffPool):
+                    loss += layer.link_pred_loss
+
+        return loss
