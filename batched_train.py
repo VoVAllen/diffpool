@@ -6,7 +6,7 @@ import argparse
 import torch
 import torch.optim as optim
 from tqdm import tqdm
-import config
+import utils
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader, random_split
 
@@ -15,7 +15,7 @@ from dataset import TUDataset, CollateFn
 
 
 def main():
-    config.writer = SummaryWriter()
+    utils.writer = SummaryWriter()
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -25,25 +25,36 @@ def main():
     parser.add_argument('--link-pred', action='store_true', default=False,
                         help='Enable Link Prediction Loss')
     parser.add_argument('--dataset', default='ENZYMES', help="Choose dataset: ENZYMES, DD")
+    parser.add_argument('--batch-size', default=20, type=int, help="Choose dataset: ENZYMES, DD")
+    parser.add_argument('--train-ratio', default=0.9, type=float, help="Train/Val split ratio")
+    parser.add_argument('--pool-ratio', default=0.25, type=float, help="Train/Val split ratio")
 
     args = parser.parse_args()
-    config.writer.add_text("args", str(args))
+    utils.writer.add_text("args", str(args))
     device = "cuda" if not args.no_cuda and torch.cuda.is_available() else "cpu"
 
     dataset = TUDataset(args.dataset)
+    dataset_size = len(dataset)
+    train_size = int(dataset_size * args.train_ratio)
+    test_size = dataset_size - train_size
     max_num_nodes = max([item[0].shape[0] for item in dataset])
-    train_data, test_data = random_split(dataset, (540, 60))
-    train_loader = DataLoader(train_data, batch_size=20, shuffle=True, collate_fn=CollateFn(device))
-    test_loader = DataLoader(test_data, batch_size=20, shuffle=True, collate_fn=CollateFn(device))
+    train_data, test_data = random_split(dataset, (train_size, test_size))
+    input_shape = int(dataset[0][1].shape[-1])
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True,
+                              collate_fn=CollateFn(device))
+    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True,
+                             collate_fn=CollateFn(device))
 
-    model = BatchedModel(pool_size=int(max_num_nodes * 0.25), device=device).to(device)
+    model = BatchedModel(pool_size=int(max_num_nodes * args.pool_ratio), device=device,
+                         link_pred=args.link_pred, input_shape=input_shape).to(device)
     model.train()
     optimizer = optim.Adam(model.parameters())
 
     for e in tqdm(range(args.epochs)):
-        config.e = e
+        utils.e = e
         epoch_losses_list = []
         true_sample = 0
+        model.train()
         for i, (adj, features, masks, batch_labels) in enumerate(train_loader):
             graph_feat = model(features, adj, masks)
             output = model.classifier(graph_feat)
@@ -57,12 +68,13 @@ def main():
             epoch_losses_list.append(loss.item())
             true_sample += (output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
 
-        acc = true_sample / 540
-        config.writer.add_scalar("Epoch Acc", acc, e)
+        acc = true_sample / train_size
+        utils.writer.add_scalar("Epoch Acc", acc, e)
         tqdm.write(f"Epoch:{e}  \t train_acc:{acc:.2f}")
 
         test_loss_list = []
         true_sample = 0
+        model.eval()
         with torch.no_grad():
             for i, (adj, features, masks, batch_labels) in enumerate(test_loader):
                 graph_feat = model(features, adj, masks)
@@ -70,10 +82,14 @@ def main():
                 loss = model.loss(output, batch_labels)
                 test_loss_list.append(loss.item())
                 true_sample += (
-                            output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
-        acc = true_sample / 60
-        config.writer.add_scalar("Epoch Acc", acc, e)
+                        output.argmax(dim=1).long() == batch_labels.long()).float().sum().item()
+        acc = true_sample / test_size
+        utils.writer.add_scalar("Epoch Acc", acc, e)
         tqdm.write(f"Epoch:{e}  \t val_acc:{acc:.2f}")
+
+        # Visualize
+        # adj, features, masks, batch_labels = test_loalder
+        # model()
 
 
 main()

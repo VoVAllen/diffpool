@@ -1,8 +1,12 @@
+import seaborn
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import numpy as np
 import scipy
+import matplotlib.pyplot as plt
+
+import utils
 
 
 class BatchedGraphSAGE(nn.Module):
@@ -42,15 +46,23 @@ class BatchedDiffPool(nn.Module):
         self.is_final = is_final
         self.embed = BatchedGraphSAGE(nfeat, nhid, device=self.device, use_bn=True)
         self.assign_mat = BatchedGraphSAGE(nfeat, nnext, device=self.device, use_bn=True)
+        self.log = {}
         self.link_pred_loss = 0
+        self.entropy_loss = 0
 
-    def forward(self, x, adj):
+    def forward(self, x, adj, mask=None, log=False):
         z_l = self.embed(x, adj)
         s_l = F.softmax(self.assign_mat(x, adj), dim=-1)
+        if log:
+            self.log['s'] = s_l.cpu().numpy()
         xnext = torch.matmul(s_l.transpose(-1, -2), z_l)
         anext = (s_l.transpose(-1, -2)).matmul(adj).matmul(s_l)
         if self.link_pred:
-            self.link_pred_loss = (adj - s_l.matmul(s_l.transpose(-1, -2))).norm(dim=1)
+            self.link_pred_loss = (adj - s_l.matmul(s_l.transpose(-1, -2))).norm(dim=(1, 2))
+            self.entropy_loss = torch.distributions.Categorical(probs=s_l).entropy()
+            if mask is not None:
+                self.entropy_loss = self.entropy_loss * mask.expand_as(self.entropy_loss)
+            self.entropy_loss = self.entropy_loss.sum(-1)
         return xnext, anext
 
 
@@ -66,12 +78,13 @@ class Classifier(nn.Module):
 
 
 class BatchedModel(nn.Module):
-    def __init__(self, pool_size, device, link_pred=False):
+    def __init__(self, pool_size, device, input_shape, link_pred=False):
         super().__init__()
+        self.input_shape = input_shape
         self.link_pred = link_pred
         self.device = device
         self.layers = nn.ModuleList([
-            BatchedGraphSAGE(18, 30, device=self.device),
+            BatchedGraphSAGE(input_shape, 30, device=self.device),
             BatchedGraphSAGE(30, 30, device=self.device),
             BatchedDiffPool(30, pool_size, 30, device=self.device, link_pred=link_pred),
             BatchedGraphSAGE(30, 30, device=self.device),
@@ -79,6 +92,7 @@ class BatchedModel(nn.Module):
             # BatchedDiffPool(30, 1, 30, is_final=True, device=self.device)
         ])
         self.classifier = Classifier()
+        # writer.add_text(str(vars(self)))
 
     def forward(self, x, adj, mask):
         for layer in self.layers:
@@ -88,7 +102,11 @@ class BatchedModel(nn.Module):
                 else:
                     x = layer(x, adj)
             elif isinstance(layer, BatchedDiffPool):
-                x, adj = layer(x, adj)
+                # TODO: Fix if condition
+                if mask.shape[1] == x.shape[1]:
+                    x, adj = layer(x, adj, mask)
+                else:
+                    x, adj = layer(x, adj)
 
         # x = x * mask
         readout_x = x.sum(dim=1)
@@ -100,6 +118,6 @@ class BatchedModel(nn.Module):
         if self.link_pred:
             for layer in self.layers:
                 if isinstance(layer, BatchedDiffPool):
-                    loss += layer.link_pred_loss
+                    loss = loss + layer.link_pred_loss.mean() + layer.entropy_loss.mean()
 
         return loss

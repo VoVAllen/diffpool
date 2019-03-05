@@ -6,13 +6,16 @@ import os
 import torch
 from dgl.data.utils import download, extract_archive, get_download_dir, _get_dgl_url
 
+from torch.utils.data import Dataset
 
-class TUDataset(object):
+
+class TUDataset(Dataset):
     _url = r"https://ls11-www.cs.uni-dortmund.de/people/morris/graphkerneldatasets/{}.zip"
 
-    def __init__(self, name, use_node_attr=True, use_node_label=False):
+    def __init__(self, name):
 
         self.name = name
+
         self.extract_dir = self._download()
         DS_edge_list = self._idx_from_zero(
             np.loadtxt(self._file_path("A"), delimiter=",", dtype=int))
@@ -20,8 +23,6 @@ class TUDataset(object):
             np.loadtxt(self._file_path("graph_indicator"), dtype=int))
         DS_graph_labels = self._idx_from_zero(
             np.loadtxt(self._file_path("graph_labels"), dtype=int))
-        DS_node_labels = self.to_onehot(
-            self._idx_from_zero(np.loadtxt(self._file_path("node_labels"), dtype=int)))
 
         g = dgl.DGLGraph()
         g.add_nodes(DS_edge_list.max() + 1)
@@ -35,14 +36,20 @@ class TUDataset(object):
         self.graph_lists = g.subgraphs(node_idx_list)
         self.graph_labels = DS_graph_labels
 
-        if use_node_label:
+        try:
+            DS_node_labels = self.to_onehot(
+                self._idx_from_zero(np.loadtxt(self._file_path("node_labels"), dtype=int)))
             for idxs, g in zip(node_idx_list, self.graph_lists):
-                g.ndata['node_label'] = DS_node_labels[idxs, :]
+                g.ndata['feat'] = DS_node_labels[idxs, :]
+        except IOError:
+            print("No Node Label Data")
 
-        if use_node_attr:
+        try:
             DS_node_attr = np.loadtxt(self._file_path("node_attributes"), delimiter=",")
             for idxs, g in zip(node_idx_list, self.graph_lists):
                 g.ndata['feat'] = DS_node_attr[idxs, :]
+        except IOError:
+            print("No Node Attribute Data")
 
     def __getitem__(self, idx):
         g = self.graph_lists[idx]
@@ -97,3 +104,5 @@ class CollateFn:
                torch.from_numpy(np.stack(features_list, 0)).float().to(self.device), \
                torch.from_numpy(np.stack(mask_list, 0)).float().to(self.device), \
                torch.from_numpy(np.stack(labels, 0)).long().to(self.device)
+
+
