@@ -67,18 +67,18 @@ class BatchedDiffPool(nn.Module):
 
 
 class Classifier(nn.Module):
-    def __init__(self):
+    def __init__(self, n_classes):
         super().__init__()
         self.classifier = nn.Sequential(nn.Linear(30, 50),
                                         nn.ReLU(),
-                                        nn.Linear(50, 6))
+                                        nn.Linear(50, n_classes))
 
     def forward(self, x):
         return self.classifier(x)
 
 
 class BatchedModel(nn.Module):
-    def __init__(self, pool_size, device, input_shape, link_pred=False):
+    def __init__(self, pool_size, device, input_shape, n_classes, link_pred=False):
         super().__init__()
         self.input_shape = input_shape
         self.link_pred = link_pred
@@ -91,7 +91,7 @@ class BatchedModel(nn.Module):
             BatchedGraphSAGE(30, 30, device=self.device),
             # BatchedDiffPool(30, 1, 30, is_final=True, device=self.device)
         ])
-        self.classifier = Classifier()
+        self.classifier = Classifier(n_classes)
         # writer.add_text(str(vars(self)))
 
     def forward(self, x, adj, mask):

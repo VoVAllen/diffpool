@@ -53,7 +53,7 @@ class TUDataset(Dataset):
 
     def __getitem__(self, idx):
         g = self.graph_lists[idx]
-        return g.adjacency_matrix().to_dense(), g.ndata['feat'], self.graph_labels[idx]
+        return (g.adjacency_matrix().to_dense(), g.ndata['feat']), self.graph_labels[idx]
 
     def __len__(self):
         return len(self.graph_lists)
@@ -90,9 +90,11 @@ class CollateFn:
         adj_tensor_list = []
         features_list = []
         mask_list = []
-        adj, features, labels = zip(*batch)
-        max_num_nodes = max([g.shape[0] for g in adj])
-        for A, F, L in zip(adj, features, labels):
+        # (adj, features), labels = list(zip(*batch))
+        max_num_nodes = max([g[0][0].shape[0] for g in batch])
+        labels = []
+        for (A, F), L in batch:
+            labels.append(L)
             length = A.shape[0]
             pad_len = max_num_nodes - length
             adj_tensor_list.append(np.pad(A, ((0, pad_len), (0, pad_len)), mode='constant'))
@@ -104,5 +106,3 @@ class CollateFn:
                torch.from_numpy(np.stack(features_list, 0)).float().to(self.device), \
                torch.from_numpy(np.stack(mask_list, 0)).float().to(self.device), \
                torch.from_numpy(np.stack(labels, 0)).long().to(self.device)
-
-
