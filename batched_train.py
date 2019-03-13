@@ -35,8 +35,8 @@ def main():
     utils.writer.add_text("args", str(args))
     device = "cuda" if not args.no_cuda and torch.cuda.is_available() else "cpu"
 
-    # dataset = TUDataset(args.dataset)
-    dataset = MNIST(root="~/.torch/data/", transform=GraphTransform(device), download=True)
+    dataset = TUDataset(args.dataset)
+    # dataset = MNIST(root="~/.torch/data/", transform=GraphTransform(device), download=True)
     dataset_size = len(dataset)
     train_size = int(dataset_size * args.train_ratio)
     test_size = dataset_size - train_size
