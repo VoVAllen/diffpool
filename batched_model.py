@@ -58,6 +58,7 @@ class BatchedDiffPool(nn.Module):
         xnext = torch.matmul(s_l.transpose(-1, -2), z_l)
         anext = (s_l.transpose(-1, -2)).matmul(adj).matmul(s_l)
         if self.link_pred:
+            # TODO: Masking padded s_l
             self.link_pred_loss = (adj - s_l.matmul(s_l.transpose(-1, -2))).norm(dim=(1, 2))
             self.entropy_loss = torch.distributions.Categorical(probs=s_l).entropy()
             if mask is not None:
