@@ -25,9 +25,8 @@ class TUDataset(Dataset):
             np.loadtxt(self._file_path("graph_labels"), dtype=int))
 
         g = dgl.DGLGraph()
-        g.add_nodes(DS_edge_list.max() + 1)
+        g.add_nodes(int(DS_edge_list.max()) + 1)
         g.add_edges(DS_edge_list[:, 0], DS_edge_list[:, 1])
-        g.add_edges(DS_edge_list[:, 1], DS_edge_list[:, 0])
 
         node_idx_list = []
         for idx in range(np.max(DS_indicator) + 1):
